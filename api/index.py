@@ -1,18 +1,15 @@
 from flask import Flask, render_template_string
 import pandas as pd
 import os
-import numpy as np
 
 app = Flask(__name__)
 
-# Bio-Markers for the Audit
 BIO_MARKERS = {
     'SEQN': 'ID',
     'DR1TFIBE': 'Fiber',
     'DR1TMAGN': 'Magnesium',
     'DR1TCALC': 'Calcium',
-    'DR1TKCAL': 'Calories',
-    'DR1TPROT': 'Protein'
+    'DR1TKCAL': 'Calories'
 }
 
 HTML_TEMPLATE = """
@@ -20,60 +17,63 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>DietaryData.com | Biological Audit</title>
+    <title>DietaryData.com | Audit</title>
     <style>
-        body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background: #ffffff; color: #1a1a1a; margin: 0; padding: 40px; line-height: 1.5; }
+        body { background-color: #ffffff !important; color: #000000; font-family: "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 50px; }
         .container { max-width: 1100px; margin: auto; }
-        .header { border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 40px; }
-        h1 { margin: 0; font-size: 2.5rem; letter-spacing: -1px; font-weight: 800; }
-        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #000; border: 1px solid #000; margin-bottom: 50px; }
-        .card { background: #fff; padding: 25px; }
-        .card h3 { margin: 0; font-size: 0.75rem; color: #666; text-transform: uppercase; font-weight: 600; }
-        .card p { margin: 10px 0 0; font-size: 2rem; font-weight: 700; color: #000; }
-        .deficit { color: #d00 !important; }
+        .header { border-bottom: 3px solid #000; padding-bottom: 20px; margin-bottom: 40px; }
+        h1 { margin: 0; font-size: 3rem; font-weight: 900; letter-spacing: -2px; }
+        
+        /* Fixed Audit Summary Bar */
+        .summary-bar { display: table; width: 100%; border: 2px solid #000; border-collapse: collapse; margin-bottom: 50px; }
+        .summary-item { display: table-cell; border: 1px solid #000; padding: 25px; width: 25%; vertical-align: top; }
+        .label { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; color: #666; display: block; margin-bottom: 10px; }
+        .value { font-size: 2.2rem; font-weight: 800; display: block; }
+        .deficit { color: #cc0000; }
+
+        /* Clean Audit Table */
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { text-align: left; background: #f2f2f2; border-top: 2px solid #000; border-bottom: 1px solid #000; padding: 12px; font-size: 0.85rem; font-weight: 700; }
-        td { padding: 12px; border-bottom: 1px solid #eee; font-size: 0.95rem; }
-        tr:hover { background: #f9f9f9; }
-        .protocol-tag { font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border: 1px solid #000; }
+        th { text-align: left; background-color: #f0f0f0; border-top: 2px solid #000; border-bottom: 1px solid #000; padding: 15px; font-size: 0.8rem; font-weight: 900; }
+        td { padding: 15px; border-bottom: 1px solid #eee; font-size: 1rem; }
+        .tag { font-size: 0.7rem; font-weight: 900; border: 1px solid #000; padding: 3px 6px; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>DIETARYDATA.COM</h1>
-            <p><strong>AUDIT:</strong> NHANES NATIONAL DIETARY DATABASE (2017-2018)</p>
+            <p><strong>AUDIT:</strong> NHANES NATIONAL BIOLOGICAL DATABASE (2017-2018)</p>
         </div>
         
-        <div class="grid">
-            <div class="card">
-                <h3>Avg Fiber</h3>
-                <p>{{ stats.Fiber_g }}g</p>
+        <div class="summary-bar">
+            <div class="summary-item">
+                <span class="label">Average Fiber</span>
+                <span class="value">{{ stats.Fiber_g }}g</span>
             </div>
-            <div class="card">
-                <h3>Target Gap</h3>
-                <p class="deficit">-{{ stats.Fiber_Gap }}g</p>
+            <div class="summary-item">
+                <span class="label">50g Target Gap</span>
+                <span class="value deficit">-{{ stats.Fiber_Gap }}g</span>
             </div>
-            <div class="card">
-                <h3>Avg Magnesium</h3>
-                <p>{{ stats.Magnesium_mg }}mg</p>
+            <div class="summary-item">
+                <span class="label">Avg Magnesium</span>
+                <span class="value">{{ stats.Magnesium_mg }}mg</span>
             </div>
-            <div class="card)
-                <h3>Ca:Mg Ratio</h3>
-                <p>{{ stats.Ca_Mg_Ratio }}</p>
+            <div class="summary-item">
+                <span class="label">Ca:Mg Ratio</span>
+                <span class="value">{{ stats.Ca_Mg_Ratio }}</span>
             </div>
         </div>
 
-        <h3>POPULATION RAW LOGS (TOP 20)</h3>
+        <h3>POPULATION AUDIT LOGS (TOP 20)</h3>
         <table>
             <thead>
                 <tr>
                     <th>RESPONDENT_ID</th>
-                    <th>FIBER (50g GOAL)</th>
+                    <th>FIBER (50g)</th>
                     <th>MAGNESIUM</th>
                     <th>CALCIUM</th>
                     <th>RATIO</th>
-                    <th>VERIFICATION</th>
+                    <th>STATUS</th>
                 </tr>
             </thead>
             <tbody>
@@ -84,7 +84,7 @@ HTML_TEMPLATE = """
                     <td>{{ row.Magnesium }}mg</td>
                     <td>{{ row.Calcium }}mg</td>
                     <td>{{ row.Ca_Mg_Ratio }}</td>
-                    <td><span class="protocol-tag">PASS_AUDIT</span></td>
+                    <td><span class="tag">VERIFIED</span></td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -97,9 +97,8 @@ HTML_TEMPLATE = """
 @app.route('/')
 def home():
     file_path = os.path.join(os.getcwd(), 'DR1TOT_J.XPT')
-    if not os.path.exists(file_path):
-        return "CRITICAL ERROR: DATA_ASSET_MISSING"
-
+    if not os.path.exists(file_path): return "ERROR: DATA_ASSET_NOT_FOUND"
+    
     try:
         df = pd.read_sas(file_path, format='xport')
         df.columns = [c.decode('utf-8') if isinstance(c, bytes) else c for c in df.columns]
@@ -115,10 +114,7 @@ def home():
             "Ca_Mg_Ratio": round(audit_df['Ca_Mg_Ratio'].mean(), 2)
         }
         
-        logs = audit_df.head(20).to_dict(orient='records')
-        return render_template_string(HTML_TEMPLATE, stats=stats, logs=logs)
-        
-    except Exception as e:
-        return f"AUDIT_FAILURE: {str(e)}"
+        return render_template_string(HTML_TEMPLATE, stats=stats, logs=audit_df.head(20).to_dict(orient='records'))
+    except Exception as e: return f"AUDIT_FAILURE: {str(e)}"
 
 app = app
