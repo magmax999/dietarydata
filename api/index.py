@@ -4,33 +4,50 @@ import os
 
 app = Flask(__name__)
 
+# NHANES Variable Mapping for high-integrity auditing
+BIO_MARKERS = {
+    'SEQN': 'Respondent_ID',
+    'DR1TFIBE': 'Fiber_g',
+    'DR1TMAGN': 'Magnesium_mg',
+    'DR1TVB6': 'B6_mg',
+    'DR1TKCAL': 'Calories_kcal',
+    'DR1TPROT': 'Protein_g',
+    'DR1TCARB': 'Carbs_g',
+    'DR1TSUGR': 'Sugar_Total_g'
+}
+
 @app.route('/')
-def home():
-    # Looks for the data file in the root directory (one level up from /api)
+def audit_summary():
     file_path = os.path.join(os.getcwd(), 'DR1TOT_J.XPT')
     
-    if os.path.exists(file_path):
-        try:
-            # Read the first 10 rows to verify the data is loading
-            df = pd.read_sas(file_path, format='xport').head(10)
-            
-            # Clean column names (decoding bytes to strings if necessary)
-            df.columns = [c.decode('utf-8') if isinstance(c, bytes) else c for c in df.columns]
-            
-            return jsonify({
-                "status": "Connected",
-                "dataset": "NHANES 2017-2018 Total Nutrients",
-                "message": "DietaryData.com is live.",
-                "data_preview": df.to_dict(orient='records')
-            })
-        except Exception as e:
-            return jsonify({"status": "Error", "message": f"Failed to read SAS file: {str(e)}"})
-    else:
-        return jsonify({
-            "status": "Error", 
-            "message": f"File not found. Expected it at: {file_path}"
-        })
+    if not os.path.exists(file_path):
+        return jsonify({"error": "Data asset missing from root."})
 
-# Required for Vercel
-if __name__ == "__main__":
-    app.run()
+    try:
+        # Load the dataset
+        df = pd.read_sas(file_path, format='xport')
+        
+        # Clean column names
+        df.columns = [c.decode('utf-8') if isinstance(c, bytes) else c for c in df.columns]
+        
+        # Filter for our specific bio-markers
+        audit_df = df[list(BIO_MARKERS.keys())].rename(columns=BIO_MARKERS)
+        
+        # Calculate Averages for the 2017-2018 Population Cycle
+        stats = {
+            "Cycle": "2017-2018",
+            "Population_Sample_Size": len(audit_df),
+            "Averages": {
+                "Daily_Fiber_Avg": round(audit_df['Fiber_g'].mean(), 2),
+                "Daily_Magnesium_Avg": round(audit_df['Magnesium_mg'].mean(), 2),
+                "Fiber_Deficit_vs_50g_Goal": round(50 - audit_df['Fiber_g'].mean(), 2)
+            },
+            "Top_10_Audit_Logs": audit_df.head(10).to_dict(orient='records')
+        }
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+app = app
