@@ -10,7 +10,7 @@ COMING_SOON_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DietaryData.com</title>
+    <title>Dietary Data</title>
     <style>
         body { 
             background-color: #ffffff; 
@@ -45,7 +45,7 @@ COMING_SOON_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>DIETARYDATA.COM</h1>
+        <h1>DIETARY DATA</h1>
         <p>Coming Soon</p>
     </div>
 </body>
