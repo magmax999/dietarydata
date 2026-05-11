@@ -1,71 +1,124 @@
-from flask import Flask, jsonify
+from flask import Flask, render_template_string
 import pandas as pd
 import os
 import numpy as np
 
 app = Flask(__name__)
 
-# Primary Bio-Markers for the Audit & Patch Protocol
+# Bio-Markers for the Audit
 BIO_MARKERS = {
-    'SEQN': 'Respondent_ID',
-    'DR1TFIBE': 'Fiber_g',
-    'DR1TMAGN': 'Magnesium_mg',
-    'DR1TCALC': 'Calcium_mg',
-    'DR1TKCAL': 'Calories_kcal',
-    'DR1TPROT': 'Protein_g',
-    'DR1TCARB': 'Carbs_g',
-    'DR1TSUGR': 'Sugar_Total_g',
-    'DR1TVB6': 'B6_mg'
+    'SEQN': 'ID',
+    'DR1TFIBE': 'Fiber',
+    'DR1TMAGN': 'Magnesium',
+    'DR1TCALC': 'Calcium',
+    'DR1TKCAL': 'Calories',
+    'DR1TPROT': 'Protein'
 }
 
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DietaryData.com | Biological Audit</title>
+    <style>
+        body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background: #ffffff; color: #1a1a1a; margin: 0; padding: 40px; line-height: 1.5; }
+        .container { max-width: 1100px; margin: auto; }
+        .header { border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 40px; }
+        h1 { margin: 0; font-size: 2.5rem; letter-spacing: -1px; font-weight: 800; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #000; border: 1px solid #000; margin-bottom: 50px; }
+        .card { background: #fff; padding: 25px; }
+        .card h3 { margin: 0; font-size: 0.75rem; color: #666; text-transform: uppercase; font-weight: 600; }
+        .card p { margin: 10px 0 0; font-size: 2rem; font-weight: 700; color: #000; }
+        .deficit { color: #d00 !important; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { text-align: left; background: #f2f2f2; border-top: 2px solid #000; border-bottom: 1px solid #000; padding: 12px; font-size: 0.85rem; font-weight: 700; }
+        td { padding: 12px; border-bottom: 1px solid #eee; font-size: 0.95rem; }
+        tr:hover { background: #f9f9f9; }
+        .protocol-tag { font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border: 1px solid #000; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>DIETARYDATA.COM</h1>
+            <p><strong>AUDIT:</strong> NHANES NATIONAL DIETARY DATABASE (2017-2018)</p>
+        </div>
+        
+        <div class="grid">
+            <div class="card">
+                <h3>Avg Fiber</h3>
+                <p>{{ stats.Fiber_g }}g</p>
+            </div>
+            <div class="card">
+                <h3>Target Gap</h3>
+                <p class="deficit">-{{ stats.Fiber_Gap }}g</p>
+            </div>
+            <div class="card">
+                <h3>Avg Magnesium</h3>
+                <p>{{ stats.Magnesium_mg }}mg</p>
+            </div>
+            <div class="card)
+                <h3>Ca:Mg Ratio</h3>
+                <p>{{ stats.Ca_Mg_Ratio }}</p>
+            </div>
+        </div>
+
+        <h3>POPULATION RAW LOGS (TOP 20)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>RESPONDENT_ID</th>
+                    <th>FIBER (50g GOAL)</th>
+                    <th>MAGNESIUM</th>
+                    <th>CALCIUM</th>
+                    <th>RATIO</th>
+                    <th>VERIFICATION</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in logs %}
+                <tr>
+                    <td>#{{ row.ID }}</td>
+                    <td>{{ row.Fiber }}g</td>
+                    <td>{{ row.Magnesium }}mg</td>
+                    <td>{{ row.Calcium }}mg</td>
+                    <td>{{ row.Ca_Mg_Ratio }}</td>
+                    <td><span class="protocol-tag">PASS_AUDIT</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
+"""
+
 @app.route('/')
-def biological_audit():
+def home():
     file_path = os.path.join(os.getcwd(), 'DR1TOT_J.XPT')
-    
     if not os.path.exists(file_path):
-        return jsonify({"status": "Error", "message": "Data asset missing."})
+        return "CRITICAL ERROR: DATA_ASSET_MISSING"
 
     try:
-        # 1. Load Raw Data
         df = pd.read_sas(file_path, format='xport')
         df.columns = [c.decode('utf-8') if isinstance(c, bytes) else c for c in df.columns]
+        audit_df = df[list(BIO_MARKERS.keys())].rename(columns=BIO_MARKERS).dropna()
         
-        # 2. Filter & Map Columns
-        audit_df = df[list(BIO_MARKERS.keys())].rename(columns=BIO_MARKERS)
+        audit_df['Ca_Mg_Ratio'] = (audit_df['Calcium'] / audit_df['Magnesium']).round(2)
+        avg_fiber = round(audit_df['Fiber'].mean(), 2)
         
-        # 3. Data Cleaning: Remove "Null" Days (NaN) and Zero-Calorie errors
-        # This ensures we are only auditing actual consumption events.
-        audit_df = audit_df.dropna(subset=['Fiber_g', 'Magnesium_mg', 'Calories_kcal'])
-        audit_df = audit_df[audit_df['Calories_kcal'] > 0]
-
-        # 4. Calculate Logic: Calcium-to-Magnesium Ratio
-        # Ideal balance is often cited as 2:1 or 1:1; population average is usually skewed.
-        audit_df['Ca_Mg_Ratio'] = (audit_df['Calcium_mg'] / audit_df['Magnesium_mg']).round(2)
-
-        # 5. Protocol Benchmarking
         stats = {
-            "Metadata": {
-                "Project": "DietaryData.com",
-                "Cycle": "2017-2018 NHANES",
-                "Clean_Sample_Size": len(audit_df)
-            },
-            "Population_Averages": {
-                "Fiber_g": round(audit_df['Fiber_g'].mean(), 2),
-                "Magnesium_mg": round(audit_df['Magnesium_mg'].mean(), 2),
-                "Calcium_mg": round(audit_df['Calcium_mg'].mean(), 2),
-                "Avg_Ca_Mg_Ratio": round(audit_df['Ca_Mg_Ratio'].mean(), 2)
-            },
-            "Protocol_Gap_Analysis": {
-                "Fiber_Deficit_vs_50g_Target": round(50 - audit_df['Fiber_g'].mean(), 2),
-                "Magnesium_Deficit_vs_420mg_Target": round(420 - audit_df['Magnesium_mg'].mean(), 2)
-            },
-            "Individual_Audit_Logs": audit_df.head(15).replace([np.inf, -np.inf], 0).to_dict(orient='records')
+            "Fiber_g": avg_fiber,
+            "Fiber_Gap": round(50 - avg_fiber, 2),
+            "Magnesium_mg": round(audit_df['Magnesium'].mean(), 2),
+            "Ca_Mg_Ratio": round(audit_df['Ca_Mg_Ratio'].mean(), 2)
         }
         
-        return jsonify(stats)
+        logs = audit_df.head(20).to_dict(orient='records')
+        return render_template_string(HTML_TEMPLATE, stats=stats, logs=logs)
         
     except Exception as e:
-        return jsonify({"status": "Protocol_Failure", "error": str(e)})
+        return f"AUDIT_FAILURE: {str(e)}"
 
-# Vercel entry point
 app = app
